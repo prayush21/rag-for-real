@@ -136,8 +136,61 @@ hit@5, tied-best hit@10, and the smallest, cheapest context.
 
 ---
 
-## Up next (Phase 3)
+## Phase 3 — retrieval (planned, not started)
 
-Hybrid search (BM25 via Postgres full-text + dense, fused with RRF) and a reranker
-(Voyage `rerank-2.5`). Exact terms like "PP&E", "Item 7A" or a ticker are where BM25 beats
-embeddings.
+**Goal:** get the right page to the top. Phase 2 shows the headroom is in *ranking*, not
+*recall*: hit@1 is 32% while hit@10 is 80% (MRR 0.48), and 15% of top-10 chunks still come
+from the wrong company.
+
+**Base:** the p2c index (Docling + structure + headers). Index names hash only the ingest
+settings, so every Phase 3 experiment reuses it — no re-embedding. Keyword search needs only a
+generated `tsvector` column + GIN index added to the existing table.
+
+### Step 0 — measurement fixes (before any experiment)
+
+Phase 2 exposed two weaknesses that would blur Phase 3 comparisons:
+
+1. **Evidence-text hit metric.** A chunk also counts as a hit if it contains most of the gold
+   `evidence_text` (token overlap), not only if it sits on the gold page. Fixes the
+   "effective tax rate" blind spot; still deterministic. Report alongside page hit@k.
+2. **Repeated generation runs.** 3 runs per config, report mean ± spread, so accuracy changes
+   can be separated from the ~5-point noise floor (~$0.30 per config).
+3. **Per-stage latency** — query embed, candidate search, rerank, generate (p50/p95) — since a
+   reranker adds a network hop.
+
+### Experiments (one change each, vs. p2c)
+
+| # | Experiment | Change | Hypothesis |
+|---|---|---|---|
+| p3a | Hybrid search | Postgres full-text (`websearch_to_tsquery`) + dense, top-50 each, fused with Reciprocal Rank Fusion (k=60) | Helps exact terms ("PP&E", "quick ratio", "FY2022", segment names) where embeddings are fuzzy. Moves hit@10 more than hit@1. |
+| p3b | Reranking | Dense top-50 → Voyage `rerank-2.5` → top-10 | **Largest gain at hit@1 / MRR**: a cross-encoder reads question and chunk together and fixes ordering. |
+| p3c | Hybrid + rerank | p3a candidates → reranker | Best overall, if hybrid adds candidates worth promoting. |
+| p3d | Metadata filter | Extract company + fiscal year from the question (rules first, Haiku fallback) → search only matching filings | Right-doc share → ~100%. Risk: multi-company questions. Every FinanceBench question names its company, so this measures how many misses are company confusion. |
+| p3e | top-k sweep | Best config at top-3 / 5 / 10 | If reranking works, top-5 may suffice — roughly halves context and cost. |
+| p3f | (optional) Real BM25 vs Postgres FTS | In-process `bm25s` instead of `ts_rank_cd` | Postgres ranking isn't true BM25 (no term-frequency saturation); does it matter at this scale? |
+
+### Engineering
+
+- **Retriever as composable stages:** candidates (dense | sparse | both) → fusion (RRF) →
+  optional reranker → optional filter → top-k, each configured in YAML. The eval reports
+  metrics after each stage, so a regression is attributable.
+- **Store:** `tsvector` generated column + GIN index (migration on existing index tables),
+  `sparse_search()`, `doc_name` filter.
+- **Reranker via LiteLLM** (`voyage/rerank-2.5`) so Cohere or a self-hosted BGE reranker on
+  Modal is a config change. Verify LiteLLM's rerank support before relying on it.
+- **Tests:** RRF fusion, filter extraction, stage composition.
+
+### Confirm on the full corpus
+
+After picking the best Phase 3 config, re-run **p1, p2c, and the winner** on the full corpus
+(84 docs, 150 questions): ~64 more Docling parses on Modal (~$1.50) and three larger indexes
+(~30M of Voyage's 200M free tokens). Turns 74-question directional results into numbers worth
+quoting.
+
+### Cost and order
+
+- Embedding: $0 (reuses p2c). Reranking: ~1M Voyage tokens per eval run (free allowance).
+  Generation: ~$0.30 per config with 3 runs → **~$3 for the phase** + ~$1.50 Modal.
+- **Order:** Step 0 → p3b → p3a → p3c → p3d → p3e → full-corpus check. Reranking first because
+  it targets the biggest gap (hit@1 32% vs hit@10 80%).
+- Work on a `phase-3` branch.
