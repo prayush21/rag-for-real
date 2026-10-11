@@ -53,3 +53,28 @@ def test_rebuild_replaces_rows(store):
         store.insert_chunks("t_rebuild", c, np.stack([_unit([1, 1, 0])]))
         store.finalize_index("t_rebuild")
     assert len(store.dense_search("t_rebuild", _unit([1, 1, 0]), k=10)) == 1
+
+
+def test_sparse_search_ors_terms_and_filters(store):
+    chunks = [
+        Chunk("ACME_2023_10K", 0, "[ACME] Purchases of property, plant and equipment 1,577", 3, 3,
+              10, {"company": "ACME"}),
+        Chunk("ACME_2023_10K", 1, "[ACME] Risk factors: competition", 4, 4, 10,
+              {"company": "ACME"}),
+        Chunk("BETA_2022_10K", 0, "[BETA] Purchases of equipment", 7, 7, 10, {"company": "BETA"}),
+    ]
+    vecs = np.stack([_unit([1, 0, 0])] * 3)
+    store.create_index("t_fts", "dev", {}, dimensions=3)
+    store.insert_chunks("t_fts", chunks, vecs)
+    store.finalize_index("t_fts")  # adds the tsvector column + GIN index
+    store.ensure_fulltext("t_fts")  # idempotent
+
+    # Not every word is in any chunk: terms must be OR-ed, ranked by how many match.
+    hits = store.sparse_search("t_fts", "What were ACME's purchases of property in 2023?", k=5)
+    assert hits[0].id == "ACME_2023_10K:0"  # matches acme + purchases + property
+    assert {h.id for h in hits} == {c.id for c in chunks}  # each matches at least one term
+
+    beta = store.sparse_search("t_fts", "purchases", k=5, doc_names=["BETA_2022_10K"])
+    assert [h.id for h in beta] == ["BETA_2022_10K:0"]
+    assert store.sparse_search("t_fts", "the of and", k=5) == []  # only stopwords
+    assert store.doc_companies("t_fts") == {"ACME_2023_10K": "ACME", "BETA_2022_10K": "BETA"}

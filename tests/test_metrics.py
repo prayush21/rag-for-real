@@ -67,3 +67,35 @@ def test_judge_parses_verdict_from_malformed_json(monkeypatch):
     monkeypatch.setattr(judge_mod.litellm, "completion", lambda **kw: resp)
     monkeypatch.setattr(judge_mod.litellm, "completion_cost", lambda **kw: 0.0)
     assert judge_mod.judge_answer("q", "gold", "cand", "m").verdict == "correct"
+
+
+def test_evidence_relevance_credits_matching_text_on_another_page():
+    from ragforreal.eval.metrics import evidence_metrics, relevance
+
+    table = " ".join(f"item{i} {1000 + i:,}" for i in range(30))
+    chunks = [
+        SimpleChunk("A", 5, 5, "unrelated risk factors " * 10),
+        SimpleChunk("A", 11, 11, "Consolidated statement " + table),  # gold is page 10
+        SimpleChunk("B", 11, 11, "Consolidated statement " + table),  # wrong document
+        SimpleChunk("A", 10, 10, "anything"),  # on the gold page
+    ]
+    flags = relevance(chunks, {("A", 10)}, [("A", table)])
+    assert flags == [False, True, False, True]
+    m = evidence_metrics(flags, [1, 2])
+    assert m == {"ev_mrr": 0.5, "ev_hit@1": 0.0, "ev_hit@2": 1.0}
+
+
+def test_evidence_relevance_needs_enough_shared_tokens():
+    from ragforreal.eval.metrics import relevance
+
+    # A short chunk fully contained in the evidence still needs min_shared tokens in common.
+    assert relevance([SimpleChunk("A", 1, 1, "total revenue")], set(),
+                     [("A", "total revenue grew 5% to 1,234 million")]) == [False]
+
+
+@dataclass
+class SimpleChunk:
+    doc_name: str
+    page_start: int
+    page_end: int
+    text: str

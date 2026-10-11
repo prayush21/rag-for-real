@@ -1,0 +1,22 @@
+# Phase 3a - p2c + keyword search (Postgres full-text), fused with dense via RRF.
+# Exact terms ("PP&E", "quick ratio", segment names) where embeddings are fuzzy.
+name: p3a_hybrid
+description: p2c + hybrid search (dense + Postgres FTS, top-50 each, RRF k=60)
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: structure
+    chunk_size: 512
+    max_table_tokens: 1024
+    min_chunk_tokens: 64
+    context_header: true
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  strategy: hybrid
+  candidate_k: 50
+  rrf_k: 60
+  top_k: 10

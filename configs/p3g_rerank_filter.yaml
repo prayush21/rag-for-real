@@ -1,0 +1,23 @@
+# Phase 3g - p3b + company filter. Alone (p3d) the filter barely moved ranking, but it lifts
+# the candidate ceiling (dense hit@50 93.2% -> 94.6%) - the only thing a reranker can't fix.
+name: p3g_rerank_filter
+description: p3b + rule-based company filter on the candidates
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: structure
+    chunk_size: 512
+    max_table_tokens: 1024
+    min_chunk_tokens: 64
+    context_header: true
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  strategy: dense
+  candidate_k: 50
+  reranker: voyage/rerank-2.5
+  company_filter: true
+  top_k: 10

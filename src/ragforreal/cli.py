@@ -86,12 +86,13 @@ def evaluate(
                                   help="Also generate answers and LLM-judge them"),
     limit: int | None = typer.Option(None, help="Only the first N questions"),
     workers: int = typer.Option(4, help="Parallel generation workers"),
+    repeats: int = typer.Option(1, help="Generation runs per question (noise floor)"),
 ) -> None:
     """Evaluate an experiment on FinanceBench (retrieval metrics; --generate for answers)."""
     from ragforreal.eval.runner import run_eval
 
     run_eval(ExperimentConfig.load(config), get_settings(), generate=generate, limit=limit,
-             workers=workers)
+             workers=workers, repeats=repeats)
 
 
 @app.command()

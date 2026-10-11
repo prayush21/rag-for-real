@@ -1,0 +1,23 @@
+# Phase 3f - p3a with real BM25 (bm25s, in-process) instead of Postgres ts_rank_cd.
+# p3a lost to dense alone; Postgres FTS alone scored hit@50 35%. Is the ranker the problem?
+name: p3f_hybrid_bm25
+description: p2c + hybrid search (dense + BM25, top-50 each, RRF k=60)
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: structure
+    chunk_size: 512
+    max_table_tokens: 1024
+    min_chunk_tokens: 64
+    context_header: true
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  strategy: hybrid
+  sparse: bm25
+  candidate_k: 50
+  rrf_k: 60
+  top_k: 10

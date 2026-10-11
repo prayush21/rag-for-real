@@ -134,12 +134,27 @@ class PgVectorStore:
                 "USING hnsw (embedding vector_cosine_ops)"
             )
             conn.execute(f"CREATE INDEX IF NOT EXISTS {table}_doc ON {table} (doc_name)")
+        self.ensure_fulltext(name)
+        with self.connect() as conn:
             n = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
             conn.execute(
                 "UPDATE rag_indexes SET status='ready', n_chunks=%s, updated_at=now() "
                 "WHERE name=%s",
                 (n, name),
             )
+
+    def ensure_fulltext(self, name: str) -> None:
+        """Add keyword search to an index: a generated ``tsvector`` column + GIN index.
+
+        Idempotent, and cheap next to re-embedding, so indexes built before hybrid search
+        existed are upgraded in place instead of rebuilt."""
+        table = _table(name)
+        with self.connect() as conn:
+            conn.execute(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tsv tsvector "
+                "GENERATED ALWAYS AS (to_tsvector('english', text)) STORED"
+            )
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {table}_tsv ON {table} USING gin (tsv)")
 
     # ---------- read path ----------
 
@@ -157,6 +172,50 @@ class PgVectorStore:
             cols = [d.name for d in cur.description]
             return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
 
+    def doc_companies(self, name: str) -> dict[str, str]:
+        """doc_name -> company, for metadata filters."""
+        table = _table(name)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"SELECT DISTINCT doc_name, metadata->>'company' FROM {table}"
+            ).fetchall()
+        return {doc: company for doc, company in rows if company}
+
+    def all_chunks(self, name: str) -> list[RetrievedChunk]:
+        """Every chunk of an index (score 0), for in-process rankers like BM25."""
+        table = _table(name)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"SELECT id, doc_name, chunk_index, page_start, page_end, text, metadata, 0.0 "
+                f"FROM {table} ORDER BY id"
+            ).fetchall()
+        return [RetrievedChunk(*r) for r in rows]
+
+    def sparse_search(self, name: str, query: str, k: int,
+                      doc_names: list[str] | None = None) -> list[RetrievedChunk]:
+        """Keyword search with Postgres full-text ranking (``ts_rank_cd``).
+
+        Terms are OR-ed: ``plainto_tsquery`` ANDs every word, and a natural-language question
+        rarely has all its words in one chunk. Ranking still rewards chunks matching more terms,
+        closer together. Not true BM25 - no term-frequency saturation or IDF."""
+        table = _table(name)
+        where, params = "", []
+        if doc_names:
+            where, params = "AND doc_name = ANY(%s)", [doc_names]
+        with self.connect() as conn:
+            rows = conn.execute(
+                # ::tsquery, not to_tsquery(): the lexemes are already stemmed, and stemming
+                # them again changes them ('purchas' -> 'purcha') so they no longer match.
+                f"""WITH q AS (SELECT replace(plainto_tsquery('english', %s)::text,
+                                              ' & ', ' | ')::tsquery AS q)
+                    SELECT id, doc_name, chunk_index, page_start, page_end, text, metadata,
+                           ts_rank_cd(tsv, q.q, 1) AS score
+                    FROM {table}, q WHERE tsv @@ q.q {where}
+                    ORDER BY score DESC, id LIMIT %s""",
+                [query, *params, k],
+            ).fetchall()
+        return [RetrievedChunk(*r) for r in rows]
+
     def dense_search(self, name: str, query_vec: np.ndarray, k: int,
                      doc_names: list[str] | None = None, ef_search: int = 100
                      ) -> list[RetrievedChunk]:
@@ -167,6 +226,14 @@ class PgVectorStore:
         with self.connect() as conn:
             # Raise HNSW's candidate list above the default (40) so top-k recall holds for k=20.
             conn.execute(f"SET hnsw.ef_search = {int(ef_search)}")
+            if doc_names:
+                # HNSW filters *after* its candidate walk: a filter matching 5% of rows would
+                # leave ~5 of 100 candidates. Iterative scans (pgvector >= 0.8) keep walking
+                # until k rows pass the filter. Older versions: widen the walk instead.
+                try:
+                    conn.execute("SET hnsw.iterative_scan = strict_order")
+                except psycopg.errors.InvalidName:
+                    conn.execute("SET hnsw.ef_search = 1000")
             rows = conn.execute(
                 f"""SELECT id, doc_name, chunk_index, page_start, page_end, text, metadata,
                            1 - (embedding <=> %s) AS score

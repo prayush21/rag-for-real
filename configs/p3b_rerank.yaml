@@ -1,0 +1,22 @@
+# Phase 3b - p2c + cross-encoder reranking of the dense top-50.
+# Targets the gap between hit@1 (32%) and hit@10 (80%): the right page is found, ranked low.
+name: p3b_rerank
+description: p2c + dense top-50 reranked by voyage rerank-2.5
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: structure
+    chunk_size: 512
+    max_table_tokens: 1024
+    min_chunk_tokens: 64
+    context_header: true
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  strategy: dense
+  candidate_k: 50
+  reranker: voyage/rerank-2.5
+  top_k: 10

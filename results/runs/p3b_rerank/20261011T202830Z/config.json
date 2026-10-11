@@ -1,0 +1,50 @@
+{
+  "experiment": {
+    "name": "p3b_rerank",
+    "description": "p2c + dense top-50 reranked by voyage rerank-2.5",
+    "ingest": {
+      "parser": "docling",
+      "chunking": {
+        "strategy": "structure",
+        "chunk_size": 512,
+        "chunk_overlap": 64,
+        "max_table_tokens": 1024,
+        "min_chunk_tokens": 64,
+        "context_header": true
+      },
+      "embedding": {
+        "model": "voyage/voyage-4",
+        "dimensions": 1024,
+        "batch_size": 64,
+        "query_input_type": "query",
+        "document_input_type": "document"
+      }
+    },
+    "retrieval": {
+      "strategy": "dense",
+      "top_k": 10,
+      "candidate_k": 50,
+      "rrf_k": 60,
+      "reranker": "voyage/rerank-2.5",
+      "company_filter": false
+    },
+    "generation": {
+      "model": "anthropic/claude-haiku-5-5",
+      "temperature": null,
+      "max_tokens": 16000
+    },
+    "eval": {
+      "ks": [
+        1,
+        3,
+        5,
+        10,
+        20
+      ],
+      "judge_model": "anthropic/claude-haiku-5-5"
+    }
+  },
+  "index": "dev_docling_voyage_voyage_4_69a5125a",
+  "corpus": "dev",
+  "git_commit": "ac5469a"
+}

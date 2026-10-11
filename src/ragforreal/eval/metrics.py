@@ -7,6 +7,7 @@ free" - always read hit@k alongside ``context_tokens@k`` when comparing chunk si
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -55,6 +56,66 @@ def retrieval_metrics(retrieved: Sequence[_Span], gold: set[GoldPage], ks: Seque
         out[f"hit@{k}"] = hit_at_k(retrieved, gold, k)
         out[f"page_recall@{k}"] = page_recall_at_k(retrieved, gold, k)
         out[f"doc_hit@{k}"] = doc_hit_at_k(retrieved, gold, k)
+    return out
+
+
+# ---------------------------------------------------------------- evidence-text matching
+#
+# Page provenance can drift: a parser assigns a table to the next page, or the same table is
+# printed twice in a filing. A chunk that contains most of the gold evidence text is relevant
+# wherever it sits, so ``ev_*`` metrics count it as a hit too. Still deterministic. They do NOT
+# credit a *different* passage that also answers the question (e.g. a tax note stating the
+# effective rate when the gold evidence is the income statement) - nothing cheap does.
+
+_TOKEN = re.compile(r"[a-z]+|\d[\d,]*(?:\.\d+)?")
+
+
+def _tokens(text: str) -> set[str]:
+    return {t.replace(",", "") for t in _TOKEN.findall(text.lower()) if len(t) > 1 or t.isdigit()}
+
+
+def evidence_overlap(chunk_text: str, evidence_text: str) -> float:
+    """Shared distinct tokens over the smaller side's count: 1.0 when one contains the other.
+    Min-normalised because a gold page is often longer than a chunk (or vice versa)."""
+    c, e = _tokens(chunk_text), _tokens(evidence_text)
+    if not c or not e:
+        return 0.0
+    return len(c & e) / min(len(c), len(e))
+
+
+class _TextSpan(_Span, Protocol):
+    text: str
+
+
+Evidence = tuple[str, str]  # (doc_name, evidence_text)
+
+
+def relevance(retrieved: Sequence[_TextSpan], gold: set[GoldPage],
+              evidence: Sequence[Evidence], threshold: float = 0.8, min_shared: int = 20
+              ) -> list[bool]:
+    """Per chunk: on a gold page, or (same document) containing most of a gold evidence text.
+    ``min_shared`` stops a tiny chunk from "containing" a long evidence passage by accident."""
+    ev_tokens = [(doc, _tokens(text)) for doc, text in evidence]
+    out = []
+    for c in retrieved:
+        hit = any(covers(c, g) for g in gold)
+        if not hit:
+            ct = _tokens(c.text)
+            for doc, et in ev_tokens:
+                shared = len(ct & et)
+                if (c.doc_name == doc and ct and et and shared >= min_shared
+                        and shared / min(len(ct), len(et)) >= threshold):
+                    hit = True
+                    break
+        out.append(hit)
+    return out
+
+
+def evidence_metrics(flags: Sequence[bool], ks: Sequence[int]) -> dict[str, float]:
+    first = next((i for i, f in enumerate(flags, 1) if f), 0)
+    out = {"ev_mrr": 1.0 / first if first else 0.0}
+    for k in ks:
+        out[f"ev_hit@{k}"] = float(any(flags[:k]))
     return out
 
 

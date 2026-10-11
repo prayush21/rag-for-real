@@ -71,8 +71,22 @@ class IngestConfig(BaseModel):
 
 
 class RetrievalConfig(BaseModel):
-    strategy: Literal["dense"] = "dense"
+    """Retrieval as composable stages: candidates -> fusion -> rerank -> top_k.
+
+    ``strategy`` picks the candidate generators: dense (vector), sparse (Postgres full-text) or
+    hybrid (both, fused with Reciprocal Rank Fusion). With a reranker, ``candidate_k``
+    candidates are re-scored by a cross-encoder; without one, candidates are simply cut to k.
+    """
+
+    strategy: Literal["dense", "sparse", "hybrid"] = "dense"
     top_k: int = 10
+    # Keyword ranker: Postgres full-text (ts_rank_cd, no IDF) or in-process BM25.
+    sparse: Literal["postgres", "bm25"] = "postgres"
+    candidate_k: int = 50  # per generator, before fusion / reranking
+    rrf_k: int = 60  # RRF damping constant (Cormack et al. 2009)
+    reranker: str | None = None  # LiteLLM rerank model, e.g. "voyage/rerank-2.5"
+    # Restrict search to filings of the companies named in the question (rule-based).
+    company_filter: bool = False
 
 
 class GenerationConfig(BaseModel):

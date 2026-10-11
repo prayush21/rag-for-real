@@ -1,0 +1,93 @@
+{
+  "experiment": "p3e_rerank_top5",
+  "description": "p3b, top_k=5",
+  "corpus": "dev",
+  "index": "dev_docling_voyage_voyage_4_69a5125a",
+  "n_questions": 74,
+  "timestamp": "2026-10-11T20:55:12+00:00",
+  "retrieval": {
+    "mrr": 0.6805,
+    "hit@1": 0.527,
+    "page_recall@1": 0.4865,
+    "doc_hit@1": 0.9595,
+    "hit@3": 0.7838,
+    "page_recall@3": 0.75,
+    "doc_hit@3": 0.973,
+    "hit@5": 0.8649,
+    "page_recall@5": 0.8311,
+    "doc_hit@5": 1.0,
+    "hit@10": 0.9324,
+    "page_recall@10": 0.8941,
+    "doc_hit@10": 1.0,
+    "hit@20": 0.9324,
+    "page_recall@20": 0.9054,
+    "doc_hit@20": 1.0,
+    "ev_mrr": 0.7097,
+    "ev_hit@1": 0.5811,
+    "ev_hit@3": 0.7838,
+    "ev_hit@5": 0.8649,
+    "ev_hit@10": 0.9324,
+    "ev_hit@20": 0.9324
+  },
+  "retrieval_candidates": {
+    "mrr": 0.4834,
+    "hit@1": 0.3243,
+    "page_recall@1": 0.3108,
+    "doc_hit@1": 0.973,
+    "hit@3": 0.5946,
+    "page_recall@3": 0.5473,
+    "doc_hit@3": 0.9865,
+    "hit@5": 0.7297,
+    "page_recall@5": 0.6689,
+    "doc_hit@5": 0.9865,
+    "hit@10": 0.7973,
+    "page_recall@10": 0.7432,
+    "doc_hit@10": 1.0,
+    "hit@20": 0.9054,
+    "page_recall@20": 0.8649,
+    "doc_hit@20": 1.0,
+    "hit@50": 0.9324,
+    "page_recall@50": 0.9144,
+    "doc_hit@50": 1.0
+  },
+  "hit@5_by_question_type": {
+    "domain-relevant": 0.8205,
+    "metrics-generated": 1.0,
+    "novel-generated": 0.8929
+  },
+  "context_tokens@top_k": 2006,
+  "top_k": 5,
+  "candidate_k": 50,
+  "filtered_share": 0,
+  "latency_ms": {
+    "query_embed_avg": 0.0,
+    "dense_p50": 163.4,
+    "dense_p95": 230.6,
+    "rerank_p50": 1.5,
+    "rerank_p95": 1.9
+  },
+  "generation": {
+    "model": "anthropic/claude-haiku-5-5",
+    "judge_model": "anthropic/claude-haiku-5-5",
+    "repeats": 3,
+    "accuracy": 0.7342,
+    "incorrect_rate": 0.1622,
+    "refusal_rate": 0.1036,
+    "error_rate": 0.0,
+    "citation_rate": 1.0,
+    "latency_p50_ms": 6148,
+    "latency_p95_ms": 9703,
+    "cost_per_question_usd": 0.001023,
+    "accuracy_runs": [
+      0.7162,
+      0.7432,
+      0.7432
+    ],
+    "accuracy_spread": 0.027
+  },
+  "rerank": {
+    "model": "voyage/rerank-2.5",
+    "tokens_billed": 0,
+    "cost_usd": 0.0
+  }
+}

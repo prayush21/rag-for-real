@@ -136,61 +136,83 @@ hit@5, tied-best hit@10, and the smallest, cheapest context.
 
 ---
 
-## Phase 3 — retrieval (planned, not started)
+## Phase 3 — retrieval
 
-**Goal:** get the right page to the top. Phase 2 shows the headroom is in *ranking*, not
-*recall*: hit@1 is 32% while hit@10 is 80% (MRR 0.48), and 15% of top-10 chunks still come
-from the wrong company.
+**Goal:** get the right page to the top. Phase 2 left the headroom in *ranking*: hit@1 32%
+vs hit@10 80% on p2c. **Base:** the p2c index for every run — retrieval-only changes, no
+re-embedding.
 
-**Base:** the p2c index (Docling + structure + headers). Index names hash only the ingest
-settings, so every Phase 3 experiment reuses it — no re-embedding. Keyword search needs only a
-generated `tsvector` column + GIN index added to the existing table.
+### Step 0 — measurement
 
-### Step 0 — measurement fixes (before any experiment)
+- **Staged eval.** Retrieval is now a chain (filter → candidates → fusion → rerank → top-k);
+  every run scores the candidate list *and* the final ranking ("hit (pre-rerank)"), plus
+  per-stage p50/p95 latency. Re-running p2c reproduced every Phase 2 retrieval number exactly.
+- **Evidence-text hits (`ev_hit@k`).** A chunk from the gold document that contains ≥80% of the
+  gold evidence text (≥20 shared tokens) also counts. It flips 1–2 questions per run, and each
+  flip checked is real: Amcor's Note 1 repeats the Item 1 business description, Boeing's MD&A
+  repeats the segment revenue table, PepsiCo's MD&A repeats its operations overview.
+  **Correction to the plan:** it does *not* fix the "effective tax rate" blind spot. The tax
+  note is different text from the income statement, so no text-overlap metric credits it.
+- **Repeated generation (`--repeats 3`).** Accuracy is reported as the mean of 3 runs with the
+  min–max range. Ranges are 1–7 points wide, which confirms the Phase 1 noise estimate.
 
-Phase 2 exposed two weaknesses that would blur Phase 3 comparisons:
+### Results (2026-10-11, dev, n=74)
 
-1. **Evidence-text hit metric.** A chunk also counts as a hit if it contains most of the gold
-   `evidence_text` (token overlap), not only if it sits on the gold page. Fixes the
-   "effective tax rate" blind spot; still deterministic. Report alongside page hit@k.
-2. **Repeated generation runs.** 3 runs per config, report mean ± spread, so accuracy changes
-   can be separated from the ~5-point noise floor (~$0.30 per config).
-3. **Per-stage latency** — query embed, candidate search, rerank, generate (p50/p95) — since a
-   reranker adds a network hop.
+| experiment | hit@1 | hit@5 | hit@10 | MRR | cand. hit@50 | right-doc share@10 | ctx tokens | accuracy (3 runs) | refused | $/q |
+|---|---|---|---|---|---|---|---|---|---|---|
+| p2c base (dense top-10) | 32.4% | 73.0% | 79.7% | 0.482 | 93.2% | 84.7% | 3,311 | 64.4% [62.2–67.6] | 19.8% | .0013 |
+| p3a hybrid, Postgres FTS | 25.7% | 48.6% | 71.6% | 0.370 | 93.2% | 63.9% | 4,487 | | | |
+| p3f hybrid, BM25 | 18.9% | 48.6% | 64.9% | 0.337 | 91.9% | 67.3% | 3,232 | | | |
+| **p3b dense → rerank** | 52.7% | 86.5% | 93.2% | 0.680 | 93.2% | 86.9% | 3,951 | **76.6% [74.3–81.1]** | **5.9%** | .0014 |
+| p3c hybrid (FTS) → rerank | **54.0%** | 86.5% | 91.9% | **0.686** | 93.2% | 87.0% | 3,891 | | | |
+| p3d company filter | 32.4% | 74.3% | 81.1% | 0.490 | 94.6% | 89.3% | 3,357 | | | |
+| p3g filter → rerank | 52.7% | **87.8%** | **94.6%** | 0.683 | **94.6%** | **90.4%** | 4,008 | 73.9% [73.0–75.7] | 7.2% | .0014 |
+| p3e p3b, top-5 | | | | | | | 2,006 | 73.4% [71.6–74.3] | 10.4% | .0010 |
+| p3e p3b, top-3 | | | | | | | 1,218 | 69.8% [68.9–70.3] | 18.0% | **.0008** |
 
-### Experiments (one change each, vs. p2c)
+*cand. hit@50 = gold page anywhere in the candidate list a reranker sees: its ceiling. $/q is
+generation + judge only. Reranking costs ≈19K Voyage tokens per question ($0.001 at list
+price, free within the allowance). At list price it would add ~70% to $/q.*
 
-| # | Experiment | Change | Hypothesis |
-|---|---|---|---|
-| p3a | Hybrid search | Postgres full-text (`websearch_to_tsquery`) + dense, top-50 each, fused with Reciprocal Rank Fusion (k=60) | Helps exact terms ("PP&E", "quick ratio", "FY2022", segment names) where embeddings are fuzzy. Moves hit@10 more than hit@1. |
-| p3b | Reranking | Dense top-50 → Voyage `rerank-2.5` → top-10 | **Largest gain at hit@1 / MRR**: a cross-encoder reads question and chunk together and fixes ordering. |
-| p3c | Hybrid + rerank | p3a candidates → reranker | Best overall, if hybrid adds candidates worth promoting. |
-| p3d | Metadata filter | Extract company + fiscal year from the question (rules first, Haiku fallback) → search only matching filings | Right-doc share → ~100%. Risk: multi-company questions. Every FinanceBench question names its company, so this measures how many misses are company confusion. |
-| p3e | top-k sweep | Best config at top-3 / 5 / 10 | If reranking works, top-5 may suffice — roughly halves context and cost. |
-| p3f | (optional) Real BM25 vs Postgres FTS | In-process `bm25s` instead of `ts_rank_cd` | Postgres ranking isn't true BM25 (no term-frequency saturation); does it matter at this scale? |
+Latency (uncached, p3b first run): dense search p50 169 ms, **rerank p50 218 ms / p95 335 ms**.
+Later runs read reranker scores from the SQLite cache, so their rerank timings are not
+representative.
 
-### Engineering
+What we learned:
+- **Reranking is the phase's win, and the first retrieval gain that shows up in answers.**
+  hit@1 32→53%, MRR 0.48→0.68, and hit@10 rises to 93.2%, which *equals* the candidate
+  ceiling: everything findable in the dense top-50 lands in the top 10. Accuracy +12 points
+  (64→77%), well clear of the noise band (p3b's worst run beats p2c's best). The gain comes
+  from refusals (20%→6%), not from fewer wrong answers (16%→18%). The model stops saying
+  "insufficient information" because the evidence now arrives.
+- **Hybrid search hurts here, and it is not just a bad ranker.** Postgres `ts_rank_cd` has no
+  IDF. Alone it scores hit@50 35%, ranking pages of "United States, Delaware" subsidiary lists
+  first. Real BM25 is better alone (hit@50 51%) but **finds zero gold pages that dense misses**
+  (dense@50 69/74, union 69/74). Fusing a much weaker list with equal RRF weight only pushes
+  good dense results down. FinanceBench questions are long and paraphrased ("If operating
+  margin is not a useful metric for a company like this…"), which is where embeddings beat term
+  matching. Hypothesis rejected for this corpus. (p3c ≈ p3b because the reranker discards
+  the noise hybrid adds.)
+- **Company confusion was not costing ranks.** The filter applies to 97% of questions and raises
+  right-doc share 85→89%, but hit@k moves by one question: the wrong-company chunks it removes
+  were ranked *below* the gold page. With the reranker (p3g) it adds +1 question at hit@5/@10
+  and nothing in accuracy (73.9 vs 76.6, overlapping ranges). Not worth an alias table to
+  maintain. The 2 unfiltered questions name no company at all ("What drove the reduction in
+  SG&A expense…"), so an LLM extractor would not have helped either.
+- **Top-10 still earns its tokens.** With the evidence now near the top, fewer chunks cost less
+  but lose accuracy steadily (top-3 69.8%, top-5 73.4%, top-10 76.6%), all through refusals.
+  Many questions need two statements (balance sheet + income statement for a ratio). Top-3 has
+  the lowest *incorrect* rate (12%): with less context the model declines rather than guesses.
+  That is a usable knob if a wrong number costs more than a refusal.
+- **What is left is a query problem, not a ranking one.** The 5 questions whose gold page is
+  outside the dense top-50 are all derived metrics or abbreviations: "operating margin" / "gross
+  margin" / "effective tax rate" (gold page: an income statement that never uses those words)
+  and "PPNE". No reranker can fix those; that is Phase 4 (HyDE, decomposition).
 
-- **Retriever as composable stages:** candidates (dense | sparse | both) → fusion (RRF) →
-  optional reranker → optional filter → top-k, each configured in YAML. The eval reports
-  metrics after each stage, so a regression is attributable.
-- **Store:** `tsvector` generated column + GIN index (migration on existing index tables),
-  `sparse_search()`, `doc_name` filter.
-- **Reranker via LiteLLM** (`voyage/rerank-2.5`) so Cohere or a self-hosted BGE reranker on
-  Modal is a config change. Verify LiteLLM's rerank support before relying on it.
-- **Tests:** RRF fusion, filter extraction, stage composition.
+**Decision:** **p3b** (dense top-50 → Voyage rerank-2.5 → top-10) is the new base. p3g and p3c
+tie it within noise but add an alias table or a second index for nothing.
 
-### Confirm on the full corpus
+### Still to do
 
-After picking the best Phase 3 config, re-run **p1, p2c, and the winner** on the full corpus
-(84 docs, 150 questions): ~64 more Docling parses on Modal (~$1.50) and three larger indexes
-(~30M of Voyage's 200M free tokens). Turns 74-question directional results into numbers worth
-quoting.
-
-### Cost and order
-
-- Embedding: $0 (reuses p2c). Reranking: ~1M Voyage tokens per eval run (free allowance).
-  Generation: ~$0.30 per config with 3 runs → **~$3 for the phase** + ~$1.50 Modal.
-- **Order:** Step 0 → p3b → p3a → p3c → p3d → p3e → full-corpus check. Reranking first because
-  it targets the biggest gap (hit@1 32% vs hit@10 80%).
-- Work on a `phase-3` branch.
+- **Full-corpus confirmation** (84 docs, 150 questions): re-run p1, p2c and p3b. Needs ~64
+  more Docling parses on Modal (~$1.50) and three larger indexes (~30M Voyage tokens).

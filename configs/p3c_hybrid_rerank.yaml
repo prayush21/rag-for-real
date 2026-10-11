@@ -1,0 +1,23 @@
+# Phase 3c - hybrid candidates (p3a) -> reranker (p3b). Fused list cut to 50 so the
+# reranker sees as many candidates as in p3b: only the candidate source changes.
+name: p3c_hybrid_rerank
+description: p3a hybrid candidates (fused top-50) reranked by voyage rerank-2.5
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: structure
+    chunk_size: 512
+    max_table_tokens: 1024
+    min_chunk_tokens: 64
+    context_header: true
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  strategy: hybrid
+  candidate_k: 50
+  rrf_k: 60
+  reranker: voyage/rerank-2.5
+  top_k: 10

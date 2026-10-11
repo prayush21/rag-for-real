@@ -17,6 +17,7 @@ eval → keep it only if the numbers say so. See [`results/leaderboard.md`](resu
 | LLM (answers + judge) | Gemini or Claude via **LiteLLM** | Same: provider-agnostic. |
 | Heavy parsing (Phase 2) | **Docling on Modal** (serverless GPU) | Keeps torch/models off the laptop. |
 | API | **FastAPI** | `/query` returns answer + cited sources. |
+| Reranking (Phase 3) | **Voyage `rerank-2.5`** via LiteLLM | Cross-encoder over the dense top-50; scores cached in SQLite. |
 | Eval | Custom retrieval metrics + LLM judge | Retrieval scoring needs no LLM → cheap, deterministic. |
 | Tests / CI | pytest (embedded Postgres via `pgserver`), ruff, GitHub Actions | |
 
@@ -54,6 +55,20 @@ rag chunks -c configs/p2b_docling_structure.yaml --sample 3   # look at the chun
 make phase2                               # ingest + eval p2a..p2d, then print the leaderboard
 ```
 
+## Phase 3: retrieval
+
+Every Phase 3 experiment reuses the p2c index (no re-embedding). Retrieval is a chain of
+stages configured in YAML: company filter → candidates (dense | Postgres full-text | BM25 |
+hybrid via RRF) → cross-encoder reranker → top k.
+
+```bash
+make phase3                               # retrieval eval of every p3* config
+rag eval -c configs/p3b_rerank.yaml --generate --repeats 3   # accuracy with a noise band
+```
+
+The eval scores both the candidate list and the final ranking ("hit (pre-rerank)"), so a
+reranker's ceiling and its gain are visible separately, and reports per-stage latency.
+
 Hypotheses and what to look for in each experiment: [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
 ## How it's measured
@@ -63,11 +78,14 @@ chunk is a hit when it's from that document and its page span covers that page. 
 
 - **hit@k** — any gold page in the top k chunks. **page_recall@k** — fraction of gold pages found
   (multi-page questions). **doc_hit@k** — right document at all. **MRR**.
+- **ev_hit@k** — also counts a chunk from the gold document that contains most of the gold
+  evidence *text* (filings repeat tables and passages on several pages).
 - **context tokens** — tokens sent to the LLM. Bigger chunks inflate hit@k "for free", so always
   read hit@k next to this.
 - With `--generate`: **accuracy / incorrect / refusal rate** (LLM judge vs. gold answer — a refusal
   is scored separately because in finance "I don't know" is far cheaper than a wrong number),
-  citation rate, p50/p95 latency, $/question.
+  citation rate, p50/p95 latency, $/question. `--repeats N` re-runs generation N times and
+  reports the spread: identical configs move several points run to run at n=74.
 
 Each run writes `results/runs/<experiment>/<timestamp>/` with the full config, git commit, and
 per-question results, so every number is reproducible.
@@ -91,7 +109,7 @@ companies' filings act as distractors.
 |---|---|---|
 | 1 | Baseline: pypdf, fixed 512-token chunks, dense search, eval harness | ✅ built |
 | 2 | Ingestion: Docling on Modal (tables, headings), structure-aware + contextual chunks, metadata | ✅ done — headers win; p2c is the new base |
-| 3 | Retrieval: hybrid (BM25 + dense, RRF), reranking (Voyage rerank-2.5), metadata filters | |
+| 3 | Retrieval: hybrid (BM25 + dense, RRF), reranking (Voyage rerank-2.5), metadata filters | ✅ dev done — reranking +12 pts accuracy; hybrid rejected; p3b is the new base |
 | 4 | Query transformation: multi-query, HyDE, decomposition | |
 | 5 | Agentic: LangGraph router → SQL / vector, self-correcting retrieval | |
 | 6 | Production: Langfuse tracing, semantic cache, model routing, guardrails, eval gate in CI | |
