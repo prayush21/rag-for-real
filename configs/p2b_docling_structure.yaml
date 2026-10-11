@@ -1,0 +1,18 @@
+# Phase 2b - p2a + structure-aware chunking: section boundaries respected, paragraphs never
+# split, tables standalone (row-split with repeated header above 1024 tokens).
+name: p2b_docling_structure
+description: Docling parse, structure-aware chunks (512 max, tables whole), voyage-4 dense, top-10
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: structure
+    chunk_size: 512
+    max_table_tokens: 1024
+    min_chunk_tokens: 64
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  top_k: 10

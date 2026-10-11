@@ -1,0 +1,50 @@
+{
+  "experiment": "p2a_docling_fixed",
+  "description": "Docling parse, fixed 512-token chunks (64 overlap), voyage-4 dense, top-10",
+  "corpus": "dev",
+  "index": "dev_docling_voyage_voyage_4_bab98016",
+  "n_questions": 74,
+  "timestamp": "2026-10-11T03:34:39+00:00",
+  "retrieval": {
+    "mrr": 0.4568,
+    "hit@1": 0.3108,
+    "page_recall@1": 0.2973,
+    "doc_hit@1": 0.9459,
+    "hit@3": 0.5541,
+    "page_recall@3": 0.5203,
+    "doc_hit@3": 0.973,
+    "hit@5": 0.6216,
+    "page_recall@5": 0.5878,
+    "doc_hit@5": 0.9865,
+    "hit@10": 0.7838,
+    "page_recall@10": 0.741,
+    "doc_hit@10": 0.9865,
+    "hit@20": 0.8649,
+    "page_recall@20": 0.8446,
+    "doc_hit@20": 1.0
+  },
+  "hit@5_by_question_type": {
+    "domain-relevant": 0.5897,
+    "metrics-generated": 0.7143,
+    "novel-generated": 0.6429
+  },
+  "context_tokens@top_k": 5116,
+  "top_k": 10,
+  "latency_ms": {
+    "query_embed_avg": 1.1,
+    "search_p50": 131.2,
+    "search_p95": 164.1
+  },
+  "generation": {
+    "model": "anthropic/claude-haiku-5-5",
+    "judge_model": "anthropic/claude-haiku-5-5",
+    "accuracy": 0.6757,
+    "incorrect_rate": 0.1486,
+    "refusal_rate": 0.1757,
+    "error_rate": 0.0,
+    "citation_rate": 1.0,
+    "latency_p50_ms": 5836,
+    "latency_p95_ms": 9615,
+    "cost_per_question_usd": 0.001536
+  }
+}

@@ -1,0 +1,18 @@
+# Phase 2 ablation - contextual headers WITHOUT Docling: p1 + "[company | doc type | period]".
+# Separates "headers help" from "structure helps". Needs no Modal run.
+name: p2d_pypdf_ctx
+description: p1 baseline + document-level contextual headers
+
+ingest:
+  parser: pypdf
+  chunking:
+    strategy: fixed_tokens
+    chunk_size: 512
+    chunk_overlap: 64
+    context_header: true
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  top_k: 10

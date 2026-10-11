@@ -1,0 +1,50 @@
+{
+  "experiment": "p1_baseline",
+  "description": "pypdf text, fixed 512-token chunks (64 overlap), voyage-4 dense search, top-10",
+  "corpus": "dev",
+  "index": "dev_pypdf_voyage_voyage_4_605f7d31",
+  "n_questions": 74,
+  "timestamp": "2026-10-11T02:31:12+00:00",
+  "retrieval": {
+    "mrr": 0.4759,
+    "hit@1": 0.3378,
+    "page_recall@1": 0.3176,
+    "doc_hit@1": 0.9054,
+    "hit@3": 0.5541,
+    "page_recall@3": 0.5135,
+    "doc_hit@3": 0.9595,
+    "hit@5": 0.6757,
+    "page_recall@5": 0.6486,
+    "doc_hit@5": 0.9865,
+    "hit@10": 0.7568,
+    "page_recall@10": 0.7432,
+    "doc_hit@10": 0.9865,
+    "hit@20": 0.8919,
+    "page_recall@20": 0.8784,
+    "doc_hit@20": 1.0
+  },
+  "hit@5_by_question_type": {
+    "domain-relevant": 0.6154,
+    "metrics-generated": 1.0,
+    "novel-generated": 0.6786
+  },
+  "context_tokens@top_k": 5119,
+  "top_k": 10,
+  "latency_ms": {
+    "query_embed_avg": 0.9,
+    "search_p50": 114.6,
+    "search_p95": 160.7
+  },
+  "generation": {
+    "model": "anthropic/claude-haiku-5-5",
+    "judge_model": "anthropic/claude-haiku-5-5",
+    "accuracy": 0.6351,
+    "incorrect_rate": 0.2162,
+    "refusal_rate": 0.1486,
+    "error_rate": 0.0,
+    "citation_rate": 1.0,
+    "latency_p50_ms": 5938,
+    "latency_p95_ms": 10887,
+    "cost_per_question_usd": 0.001564
+  }
+}

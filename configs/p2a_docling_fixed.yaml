@@ -1,0 +1,17 @@
+# Phase 2a - change ONLY the parser: Docling (tables as Markdown, no page furniture).
+# Same fixed 512-token chunks as p1, so any delta is the parser's.
+name: p2a_docling_fixed
+description: Docling parse, fixed 512-token chunks (64 overlap), voyage-4 dense, top-10
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: fixed_tokens
+    chunk_size: 512
+    chunk_overlap: 64
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  top_k: 10

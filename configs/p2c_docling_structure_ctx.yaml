@@ -1,0 +1,19 @@
+# Phase 2c - p2b + contextual chunk headers: "[3M | 10k | 2018 | Item 8 > Cash Flows]".
+# A table chunk saying "Purchases of PP&E (1,577)" now carries who/when/where.
+name: p2c_docling_structure_ctx
+description: p2b + contextual headers (company, doc type, period, section path)
+
+ingest:
+  parser: docling
+  chunking:
+    strategy: structure
+    chunk_size: 512
+    max_table_tokens: 1024
+    min_chunk_tokens: 64
+    context_header: true
+  embedding:
+    model: voyage/voyage-4
+    dimensions: 1024
+
+retrieval:
+  top_k: 10
