@@ -5,5 +5,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .cache/
-data/
+/data/
 .DS_Store
