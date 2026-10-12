@@ -212,7 +212,26 @@ What we learned:
 **Decision:** **p3b** (dense top-50 → Voyage rerank-2.5 → top-10) is the new base. p3g and p3c
 tie it within noise but add an alias table or a second index for nothing.
 
+### Where the remaining errors are
+
+Splitting p3b's 222 answers (74 questions × 3 runs) by whether the evidence was in the top 10:
+
+| | correct | incorrect | refused |
+|---|---|---|---|
+| evidence in top 10 | 73.9% | **16.2%** | 3.2% |
+| evidence missed | 2.7% | 1.4% | 2.7% |
+
+Retrieval misses now cost ~4 points; wrong answers *with* the evidence in hand cost ~19. Query
+transformation (the planned Phase 4) can recover at most the first. The second is generation:
+metric definitions, arithmetic, or judge errors. Error analysis on those answers comes before
+choosing Phase 4.
+
 ### Still to do
 
-- **Full-corpus confirmation** (84 docs, 150 questions): re-run p1, p2c and p3b. Needs ~64
-  more Docling parses on Modal (~$1.50) and three larger indexes (~30M Voyage tokens).
+- **Full-corpus confirmation** (84 docs, 150 questions), deferred to the end of the project so
+  it covers every phase's winner at once. Two new indexes (p1 and p2c; p3b reuses p2c), ~17M
+  Voyage tokens (free tier), ~$1.60 Modal, ~$0.20 Haiku per config per run. Keep the 76 non-dev
+  questions as a held-out test.
+- **Storage:** the Neon database is already 472 MB, close to the free plan's ~0.5 GB. A full p2c
+  index alone is ~500 MB, so the full-corpus run needs a local Postgres (`pgserver`), `halfvec`,
+  or dropping finished dev indexes.

@@ -12,7 +12,7 @@ eval → keep it only if the numbers say so. See [`results/leaderboard.md`](resu
 
 | Layer | Choice | Why |
 |---|---|---|
-| Vector store | **Postgres + pgvector** on [Neon](https://neon.com) (free tier) | One database for vectors, metadata, and later BM25. Versioned indexes. |
+| Vector store | **Postgres + pgvector** on [Neon](https://neon.com) (free tier) | One database for vectors, metadata and full-text search. Versioned indexes. |
 | Embeddings | **Voyage `voyage-4`** via LiteLLM (200M free tokens) | Provider is a config string; swap without code changes. |
 | LLM (answers + judge) | Gemini or Claude via **LiteLLM** | Same: provider-agnostic. |
 | Heavy parsing (Phase 2) | **Docling on Modal** (serverless GPU) | Keeps torch/models off the laptop. |
